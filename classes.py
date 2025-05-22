@@ -56,14 +56,21 @@ class InertialContinuousArena(gym.Env):
         self.agent_pos = np.array([-arena_size*.9, -arena_size*.9])
         self.agent_vel = np.array([0,0])
 
+
         # Define action and observation space
         # They must be gym.spaces objects
         # Example when using discrete actions, we have 5: thrust {up, down, left, right}, coast
         n_actions = 5
         self.action_space = spaces.Discrete(n_actions)
         # The observation will be [x_pos, y_pos, x_vel, y_vel] of the agent
-        low = np.array([-arena_size, -arena_size, -np.inf, -np.inf])
-        high = np.array([arena_size, arena_size, np.inf, np.inf])
+        low = np.array([-arena_size,    # x_pos
+                        -arena_size,    # y_pos
+                        -np.inf,        # x_vel
+                        -np.inf])       # y_vel
+        high = np.array([arena_size,    # x_pos
+                         arena_size,    # y_pos
+                         np.inf,        # x_vel
+                         np.inf])       # y_vel
         self.observation_space = spaces.Dict({'agent_state': 
                                               spaces.Box(
             low=low, high=high, shape=(4,), dtype=np.float64)}
