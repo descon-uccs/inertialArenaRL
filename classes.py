@@ -105,8 +105,8 @@ class InertialContinuousArena(gym.Env):
                 f"Received invalid action={action} which is not part of the action space"
             )
         
-        self.agent_vel += self.action_list[action] # add an impulse taken from the action_list
-        self.agent_pos += self.agent_vel/self.sample_rate # propagate the position at the given sampling rate
+        self.agent_pos += self.agent_vel/self.sample_rate # propagate the position at the given sampling rate (before impulse)
+        self.agent_vel += self.action_list[action] # add an impulse taken from the action_list (after propagating position)
 
         # Account for the boundaries of the grid: 0 agent's velocity in the component where it hit the wall?
         for dim in range(2) :
