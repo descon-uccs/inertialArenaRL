@@ -107,6 +107,20 @@ class InertialContinuousArena(gym.Env):
         
         return {'agent_state':np.concatenate((self.agent_pos,self.agent_vel))}, {}  # empty info dict
 
+
+    def _reward(self,action,terminated,truncated) :
+        
+        # Null reward everywhere except when reaching the goal (left of the grid)
+        reward = 0
+        if action != self.COAST :
+            reward -= 1 # thrust is costly
+        if terminated :
+            reward += 100 # getting to the goal is good
+        else:
+            reward -= 1/self.sample_rate # penalize delay (lose 1 reward per simulation second)
+        
+        return reward
+
     def step(self, action):
         if action not in [0,1,2,3,4] :
             raise ValueError(
@@ -131,14 +145,7 @@ class InertialContinuousArena(gym.Env):
         terminated = self.GOAL.contains(self.agent_pos)
         truncated = False  # we do not limit the number of steps here
 
-        # Null reward everywhere except when reaching the goal (left of the grid)
-        reward = 0
-        if action != self.COAST :
-            reward -= 1 # thrust is costly
-        if terminated :
-            reward += 100 # getting to the goal is good
-        else:
-            reward -= 1/self.sample_rate # penalize delay (lose 1 reward per simulation second)
+        reward = self._reward(action,terminated,truncated)
 
         # Optionally we can pass additional info, we are not using that for now
         info = {}
@@ -152,6 +159,13 @@ class InertialContinuousArena(gym.Env):
             truncated,
             info,
         )
+
+    def _annotate_plot(self,ax) :
+        '''
+        ax: pyplot axes object to add stuff to!
+        '''
+        ax.text(-9.5, 10.2, "cum reward="+str(np.round(self.cum_reward,1)), fontsize=12, color='green', weight='bold')
+        return ax
 
     def render(self):
         # agent is represented as a cross, rest as a dot
@@ -198,6 +212,8 @@ class InertialContinuousArena(gym.Env):
             # Draw goal area border
             ax.plot([-1, 1, 1, -1, -1],
                     [-1, -1, 1, 1, -1], 'k-', linewidth=1)
+            
+            ax = self._annotate_plot(ax)
         
             # Render to RGB array
             canvas.draw()
@@ -265,20 +281,10 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
         
         return obs,info
 
-
-
-    def step(self, action):
-        
-        obs,rewardSuper,terminated,truncated,info = super().step(action)
-        
-        self.cum_reward -= rewardSuper
+    def _reward(self,action,terminated,truncated) :
         
         # compute reward differently for trigger environment!
         # positive reward if terminated after TA, negative reward if terminated before TA
-        
-        self.T += 1/self.sample_rate # propagate time
-        self.TA_passed = self.T >= self.TA-1e-6
-        
         reward = 0.
         # reward -= np.linalg.norm(self.agent_pos)/10000 # slope the agent slightly toward the goal
         if action != self.COAST :
@@ -291,8 +297,14 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
         else :
             if terminated :
                 reward -= 50 # getting to the goal before TA is bad
+        return reward
+
+    def step(self, action):
         
-        self.cum_reward += reward
+        self.T += 1/self.sample_rate # propagate time
+        self.TA_passed = self.T >= self.TA-1e-6
+        
+        obs,reward,terminated,truncated,info = super().step(action) # super handles cumulative reward and calling the _reward method
         
         obs['TA_passed'] = self.TA_passed
 
@@ -306,67 +318,19 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
     
     
 
-    def render(self):
-        # agent is represented as a cross, rest as a dot
-        if self.render_mode == "console":
-            print("." * self.agent_pos, end="")
-            print("x", end="")
-            print("." * (self.grid_size - self.agent_pos))
-
-        if self.render_mode == "rgb_array":
-    
-            # Unpack state
-            pos = self.agent_pos
-            vel = self.agent_vel
-            vel_mag = np.linalg.norm(self.agent_vel)
+    def _annotate_plot(self,ax) :
+        '''
+        ax: pyplot axes object to add stuff to!
+        This method is called from the parent's render() method and can be used
+        to customize the display for the child's purposes.
+        '''
         
-            # Create a figure and manually set the canvas
-            fig, ax = plt.subplots(figsize=(4, 4), dpi=100)
-            canvas = FigureCanvasAgg(fig)  # explicitly use Agg canvas
-            fig.set_canvas(canvas)
-        
-            ax.set_xlim(-self.arena_size, self.arena_size)
-            ax.set_ylim(-self.arena_size, self.arena_size)
-            ax.set_aspect('equal')
-            ax.axis("off")
-
-            ax.plot(pos[0], pos[1], 'ro', markersize=5)
-        
-            # Draw the agent as an arrow (if vel is nonzero)
-            if vel_mag > 1e-6:
-                ax.arrow(
-                    pos[0], pos[1],
-                    vel[0], vel[1],
-                    head_width=0.5,
-                    head_length=0.7,
-                    fc='blue',
-                    ec='blue',
-                    length_includes_head=True
-                )
-            
-            # Draw arena border
-            ax.plot([-self.arena_size, self.arena_size, self.arena_size, -self.arena_size, -self.arena_size],
-                    [-self.arena_size, -self.arena_size, self.arena_size, self.arena_size, -self.arena_size], 'k-', linewidth=1)
-            
-            
-            # If TA_passed signal is active, display label
-            ax.text(-9.5, 11.4, "T="+str(np.round(self.T,1)), fontsize=12, color='green', weight='bold')
-            ax.text(-9.5, 10.2, "cum reward="+str(np.round(self.cum_reward,1)), fontsize=12, color='green', weight='bold')
-            if self.TA_passed :
-                ax.text(-9.5, 9, "TA Passed", fontsize=12, color='red', weight='bold')
-    
-            # Draw goal area border
-            ax.plot([-1, 1, 1, -1, -1],
-                    [-1, -1, 1, 1, -1], 'k-', linewidth=1)
-        
-            # Render to RGB array
-            canvas.draw()
-            buf = canvas.buffer_rgba()  # use RGBA buffer
-            width, height = fig.get_size_inches() * fig.dpi
-            image = np.frombuffer(buf, dtype=np.uint8).reshape(int(height), int(width), 4)[..., :3]  # strip alpha
-        
-            plt.close(fig)
-            return image
+        # If TA_passed signal is active, display label
+        ax.text(-9.5, 11.4, "T="+str(np.round(self.T,1)), fontsize=12, color='green', weight='bold')
+        ax.text(-9.5, 10.2, "cum reward="+str(np.round(self.cum_reward,1)), fontsize=12, color='green', weight='bold')
+        if self.TA_passed :
+            ax.text(-9.5, 9, "TA Passed", fontsize=12, color='red', weight='bold')
+        return ax
 
 
 
@@ -392,5 +356,5 @@ if __name__=="__main__" :
     # Train the agent
     # model.learn(total_timesteps=10_000)
     # record_video('InertialContinuousArenaTrigger', model,prefix='10ksteps')
-    model.learn(total_timesteps=200_000)
-    record_video('InertialContinuousArenaTrigger', model,prefix='200ksteps')
+    model.learn(total_timesteps=2_000_000)
+    record_video('InertialContinuousArenaTrigger', model,prefix='2000ksteps')
