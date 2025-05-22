@@ -234,14 +234,11 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
             
         self.T = 0.
         
-        # The observation will be [x_pos, y_pos, x_vel, y_vel, T, TA_passed]
-        low = np.concatenate((self.observation_space.low,
-                              np.array([0.,0.])))   #T, TA_passed
-        high = np.concatenate((self.observation_space.high,
-                               np.array([np.inf,1.])))   #T, TA_passed
-        self.observation_space = spaces.Box(
-            low=low, high=high, shape=(6,), dtype=np.float64
-        )
+        state_observation_space = self.observation_space
+        self.observation_space = spaces.Dict({
+            "agent_state"   : state_observation_space,
+            "TA_passed"     : spaces.Discrete(2)})
+        
 
     def reset(self, seed=None, options=None, state=None):
         """
@@ -260,6 +257,10 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
             self.TA_passed = 1.
         
         # return obs, np.array((self.T,self.TA_passed))
+        
+        return {'agent_state':obs,
+                'TA_passed':self.TA_passed}, info
+        
         return np.concatenate((obs,np.array([self.T,self.TA_passed]))), info  # empty info dict
 
 
@@ -369,7 +370,7 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
 
 if __name__=="__main__" :
     
-    gym.register('InertialContinuousArenaTrigger',InertialContinuousArenaTrigger)
+    # gym.register('InertialContinuousArenaTrigger',InertialContinuousArenaTrigger)
         
     # uglyVideo(10,env)
     
@@ -377,16 +378,17 @@ if __name__=="__main__" :
     # vec_env = make_vec_env(InertialContinuousArena, n_envs=1, env_kwargs=dict(arena_size=10))
     
     envTrig = InertialContinuousArenaTrigger()
+    envTrig.reset()
     
     from stable_baselines3 import PPO
     from util import record_video
     
-    model = PPO("MlpPolicy", envTrig, verbose=1, device='cpu')
+    # model = PPO("MultiInputPolicy", envTrig, verbose=1, device='cpu')
     
     # record_video('InertialContinuousArenaTrigger', model,prefix='untrained')
     
     # Train the agent
     # model.learn(total_timesteps=10_000)
     # record_video('InertialContinuousArenaTrigger', model,prefix='10ksteps')
-    model.learn(total_timesteps=100_000)
-    record_video('InertialContinuousArenaTrigger', model,prefix='100ksteps')
+    # model.learn(total_timesteps=100_000)
+    # record_video('InertialContinuousArenaTrigger', model,prefix='100ksteps')
