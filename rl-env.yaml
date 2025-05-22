@@ -1,0 +1,12 @@
+name: rl-testing
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11.12=h3f84c4b_0_cpython
+  - stable-baselines3>=2.6.0
+  - jupyterlab>=4.4.2
+  - gymnasium>=1.0.0
+  - gymnasium-classic_control>=1.0.0
+  - gymnasium-other>=1.0.0
+  - spyder>=6.0.6
