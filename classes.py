@@ -54,8 +54,8 @@ class InertialContinuousArena(gym.Env):
         self.sample_rate=sample_rate
         
         # Initialize the agent near the lower-left
-        self.agent_pos = [-arena_size*.9, -arena_size*.9]
-        self.agent_vel = [0,0]
+        self.agent_pos = np.array([-arena_size*.9, -arena_size*.9])
+        self.agent_vel = np.array([0,0])
 
         # Define action and observation space
         # They must be gym.spaces objects
@@ -71,8 +71,9 @@ class InertialContinuousArena(gym.Env):
                          arena_size,    # y_pos
                          np.inf,        # x_vel
                          np.inf])       # y_vel
-        self.observation_space = spaces.Box(
-            low=low, high=high, shape=(4,), dtype=np.float64
+        self.observation_space = spaces.Dict({'agent_state': 
+                                              spaces.Box(
+            low=low, high=high, shape=(4,), dtype=np.float64)}
         )
         
         self.cum_reward = 0.
@@ -88,7 +89,7 @@ class InertialContinuousArena(gym.Env):
         if state is None :
             # Initialize the agent randomly
             
-            state = self.observation_space.sample()
+            state = self.observation_space.sample()['agent_state']
             self.agent_pos = state[:2]
             self.agent_vel = state[2:4]
             
@@ -97,12 +98,13 @@ class InertialContinuousArena(gym.Env):
             # self.agent_vel = np.array([0,0])
             
         else :
+            state = np.array(state)
             self.agent_pos = state[:2]
             self.agent_vel = state[2:4]
             
         self.cum_reward = 0.
         
-        return np.concatenate((self.agent_pos,self.agent_vel)), {}  # empty info dict
+        return {'agent_state':np.concatenate((self.agent_pos,self.agent_vel))}, {}  # empty info dict
 
     def step(self, action):
         if action not in [0,1,2,3,4] :
@@ -143,7 +145,7 @@ class InertialContinuousArena(gym.Env):
         self.cum_reward += reward
 
         return (
-            np.concatenate((self.agent_pos,self.agent_vel)),#.astype(np.float32),
+            {'agent_state': np.concatenate((self.agent_pos,self.agent_vel))},
             reward,
             terminated,
             truncated,
