@@ -268,16 +268,17 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
         self.TA_passed = self.T >= self.TA-1e-6
         
         reward = 0
+        reward -= np.linalg.norm(self.agent_pos)/10000 # slope the agent slightly toward the goal
         if action != self.COAST :
             reward -= 1 # thrust is always costly
         if self.TA_passed>0.5 : 
             if terminated :
-                reward += 100 # getting to the goal after TA is good
+                reward += 1000 # getting to the goal after TA is good
             else:
                 reward -= 1/self.sample_rate # penalize delay after TA (lose 1 reward per simulation second)
         else :
             if terminated :
-                reward -= 100 # getting to the goal before TA is bad
+                reward -= 1000 # getting to the goal before TA is bad
         
         obs = np.concatenate((obs,np.array([self.T,self.TA_passed]))) # create new obs
 
@@ -335,9 +336,9 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
             
             
             # If TA_passed signal is active, display label
-            ax.text(-9.5, 9.2, "T="+str(self.T), fontsize=12, color='green', weight='bold')
+            ax.text(-9.5, 10.2, "T="+str(np.round(self.T,1)), fontsize=12, color='green', weight='bold')
             if self.TA_passed >= 0.5:
-                ax.text(-9.5, 10, "TA_Passed", fontsize=12, color='red', weight='bold')
+                ax.text(-9.5, 9, "TA_Passed", fontsize=12, color='red', weight='bold')
     
             # Draw goal area border
             ax.plot([-1, 1, 1, -1, -1],
@@ -370,10 +371,10 @@ if __name__=="__main__" :
     
     model = PPO("MlpPolicy", envTrig, verbose=1, device='cpu')
     
-    record_video('InertialContinuousArenaTrigger', model,prefix='untrained')
+    # record_video('InertialContinuousArenaTrigger', model,prefix='untrained')
     
     # Train the agent
-    model.learn(total_timesteps=10_000)
-    record_video('InertialContinuousArenaTrigger', model,prefix='10ksteps')
-    model.learn(total_timesteps=90_000)
-    record_video('InertialContinuousArenaTrigger', model,prefix='100ksteps')
+    # model.learn(total_timesteps=10_000)
+    # record_video('InertialContinuousArenaTrigger', model,prefix='10ksteps')
+    # model.learn(total_timesteps=100_000)
+    # record_video('InertialContinuousArenaTrigger', model,prefix='100ksteps')
