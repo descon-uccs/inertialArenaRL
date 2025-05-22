@@ -74,6 +74,8 @@ class InertialContinuousArena(gym.Env):
         self.observation_space = spaces.Box(
             low=low, high=high, shape=(4,), dtype=np.float64
         )
+        
+        self.cum_reward = 0.
 
     def reset(self, seed=None, options=None, state=None):
         """
@@ -97,6 +99,9 @@ class InertialContinuousArena(gym.Env):
         else :
             self.agent_pos = state[:2]
             self.agent_vel = state[2:4]
+            
+        self.cum_reward = 0.
+        
         return np.concatenate((self.agent_pos,self.agent_vel)), {}  # empty info dict
 
     def step(self, action):
@@ -134,6 +139,8 @@ class InertialContinuousArena(gym.Env):
 
         # Optionally we can pass additional info, we are not using that for now
         info = {}
+        
+        self.cum_reward += reward
 
         return (
             np.concatenate((self.agent_pos,self.agent_vel)),#.astype(np.float32),
