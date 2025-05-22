@@ -370,8 +370,9 @@ class InertialContinuousArenaThrust(InertialContinuousArenaTrigger) :
         # positive reward if terminated after TA, negative reward if terminated before TA
         reward = 0.
         # reward -= np.linalg.norm(self.agent_pos)/10000 # slope the agent slightly toward the goal
-        if action != self.COAST :
-            reward -= 1 # thrust is always costly
+        
+        # the L1-norm of the impulse is a cost: (assume independent x and y thrusters I guess?)
+        reward -= np.linalg.norm(action,ord=1)
         if self.TA_passed : 
             if terminated :
                 reward += 1000 # getting to the goal after TA is good
@@ -382,13 +383,43 @@ class InertialContinuousArenaThrust(InertialContinuousArenaTrigger) :
                 reward -= 50 # getting to the goal before TA is bad
         return reward
 
+
     def step(self, action):
+        if not self.action_space.contains(action):
+            raise ValueError(
+                f"Received invalid action={action} which is not part of the action space"
+            )
+        
         
         self.T += 1/self.sample_rate # propagate time
         self.TA_passed = self.T >= self.TA-1e-6
         
-        obs,reward,terminated,truncated,info = super().step(action) # super handles cumulative reward and calling the _reward method
+        self.agent_pos += self.agent_vel/self.sample_rate # propagate the position at the given sampling rate (before impulse)
+        self.agent_vel += action # add the action directly as an impulse
+
+        # Account for the boundaries of the grid: 0 agent's velocity in the component where it hit the wall?
+        for dim in range(2) :
+            if self.agent_pos[dim] > self.arena_size :
+                self.agent_pos[dim] = self.arena_size
+                self.agent_vel[dim] = 0 # if we hit the x (y) boundary, zero-out the x (y) velocity
+            elif self.agent_pos[dim] < -self.arena_size :
+                self.agent_pos[dim] = -self.arena_size
+                self.agent_vel[dim] = 0 # if we hit the x (y) boundary, zero-out the x (y) velocity
+                
+        # self.agent_pos = np.clip(self.agent_pos, [-self.arena_size,-self.arena_size], [self.arena_size,self.arena_size])
+
+        # Are we at the center of the grid?
+        terminated = self.GOAL.contains(self.agent_pos)
+        truncated = False  # we do not limit the number of steps here
+
+        reward = self._reward(action,terminated,truncated)
+
+        # Optionally we can pass additional info, we are not using that for now
+        info = {}
         
+        self.cum_reward += reward
+        
+        obs = {'agent_state': np.concatenate((self.agent_pos,self.agent_vel))}
         obs['TA_passed'] = self.TA_passed
 
         return (
@@ -396,7 +427,7 @@ class InertialContinuousArenaThrust(InertialContinuousArenaTrigger) :
             reward,
             terminated,
             truncated,
-            info
+            info,
         )
     
     def _annotate_plot(self,ax) :
@@ -415,7 +446,7 @@ class InertialContinuousArenaThrust(InertialContinuousArenaTrigger) :
 
 if __name__=="__main__" :
     
-    gym.register('InertialContinuousArenaTriggerThrust',InertialContinuousArenaThrust)
+    gym.register('InertialContinuousArenaThrust',InertialContinuousArenaThrust)
         
     # uglyVideo(10,env)
     
@@ -430,10 +461,10 @@ if __name__=="__main__" :
     
     model = PPO("MultiInputPolicy", envThr, verbose=1, device='cpu')
     
-    # record_video('InertialContinuousArenaTrigger', model,prefix='untrained')
+    record_video('InertialContinuousArenaThrust', model,prefix='Thrust_untrained')
     
     # Train the agent
-    # model.learn(total_timesteps=10_000)
-    # record_video('InertialContinuousArenaTrigger', model,prefix='10ksteps')
-    # model.learn(total_timesteps=2_000_000)
-    # record_video('InertialContinuousArenaTrigger', model,prefix='2000ksteps')
+    model.learn(total_timesteps=10_000)
+    record_video('InertialContinuousArenaThrust', model,prefix='Thrust_10ksteps')
+    model.learn(total_timesteps=100_000)
+    record_video('InertialContinuousArenaTrigger', model,prefix='Thrust_100ksteps')
