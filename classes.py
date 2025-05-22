@@ -231,16 +231,16 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
         self.TA = TA
         
         if TA>1e-6 : 
-            self.TA_passed = 0.
+            self.TA_passed = False
         else :
-            self.TA_passed = 1.
+            self.TA_passed = True
             
         self.T = 0.
         
-        state_observation_space = self.observation_space
-        self.observation_space = spaces.Dict({
-            "agent_state"   : state_observation_space,
-            "TA_passed"     : spaces.Discrete(2)})
+        self.observation_space['TA_passed'] = spaces.Discrete(2)
+        # self.observation_space = spaces.Dict({
+        #     "agent_state"   : state_observation_space,
+        #     "TA_passed"     : spaces.Discrete(2)})
         
 
     def reset(self, seed=None, options=None, state=None):
@@ -255,16 +255,15 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
         self.T = 0. # set clock to 0
         
         if self.TA>1e-6 : 
-            self.TA_passed = 0. 
+            self.TA_passed = False
         else :
-            self.TA_passed = 1.
+            self.TA_passed = True
         
         # return obs, np.array((self.T,self.TA_passed))
         
-        return {'agent_state':obs,
-                'TA_passed':self.TA_passed}, info
+        obs['TA_passed'] = self.TA_passed
         
-        return np.concatenate((obs,np.array([self.T,self.TA_passed]))), info  # empty info dict
+        return obs,info
 
 
 
@@ -284,7 +283,7 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
         # reward -= np.linalg.norm(self.agent_pos)/10000 # slope the agent slightly toward the goal
         if action != self.COAST :
             reward -= 1 # thrust is always costly
-        if self.TA_passed>0.5 : 
+        if self.TA_passed : 
             if terminated :
                 reward += 1000 # getting to the goal after TA is good
             else:
@@ -295,7 +294,7 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
         
         self.cum_reward += reward
         
-        obs = np.concatenate((obs,np.array([self.T,self.TA_passed]))) # create new obs
+        obs['TA_passed'] = self.TA_passed
 
         return (
             obs,
@@ -353,7 +352,7 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
             # If TA_passed signal is active, display label
             ax.text(-9.5, 11.4, "T="+str(np.round(self.T,1)), fontsize=12, color='green', weight='bold')
             ax.text(-9.5, 10.2, "cum reward="+str(np.round(self.cum_reward,1)), fontsize=12, color='green', weight='bold')
-            if self.TA_passed >= 0.5:
+            if self.TA_passed :
                 ax.text(-9.5, 9, "TA Passed", fontsize=12, color='red', weight='bold')
     
             # Draw goal area border
@@ -373,7 +372,7 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
 
 if __name__=="__main__" :
     
-    # gym.register('InertialContinuousArenaTrigger',InertialContinuousArenaTrigger)
+    gym.register('InertialContinuousArenaTrigger',InertialContinuousArenaTrigger)
         
     # uglyVideo(10,env)
     
@@ -386,12 +385,12 @@ if __name__=="__main__" :
     from stable_baselines3 import PPO
     from util import record_video
     
-    # model = PPO("MultiInputPolicy", envTrig, verbose=1, device='cpu')
+    model = PPO("MultiInputPolicy", envTrig, verbose=1, device='cpu')
     
     # record_video('InertialContinuousArenaTrigger', model,prefix='untrained')
     
     # Train the agent
     # model.learn(total_timesteps=10_000)
     # record_video('InertialContinuousArenaTrigger', model,prefix='10ksteps')
-    # model.learn(total_timesteps=100_000)
-    # record_video('InertialContinuousArenaTrigger', model,prefix='100ksteps')
+    model.learn(total_timesteps=200_000)
+    record_video('InertialContinuousArenaTrigger', model,prefix='200ksteps')
