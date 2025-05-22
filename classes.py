@@ -467,4 +467,4 @@ if __name__=="__main__" :
     model.learn(total_timesteps=10_000)
     record_video('InertialContinuousArenaThrust', model,prefix='Thrust_10ksteps')
     model.learn(total_timesteps=100_000)
-    record_video('InertialContinuousArenaTrigger', model,prefix='Thrust_100ksteps')
+    record_video('InertialContinuousArenaThrust', model,prefix='Thrust_100ksteps')
