@@ -254,8 +254,126 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
         
         # return obs, np.array((self.T,self.TA_passed))
         return np.concatenate((obs,np.array([self.T,self.TA_passed]))), info  # empty info dict
+
+
+
+    def step(self, action):
+        
+        obs,_,terminated,truncated,info = super().step(action)
+        
+        # compute reward differently for trigger environment!
+        # positive reward if terminated after TA, negative reward if terminated before TA
+        
+        self.T += 1/self.sample_rate # propagate time
+        self.TA_passed = self.T >= self.TA-1e-6
+        
+        reward = 0
+        if action != self.COAST :
+            reward -= 1 # thrust is always costly
+        if self.TA_passed>0.5 : 
+            if terminated :
+                reward += 100 # getting to the goal after TA is good
+            else:
+                reward -= 1/self.sample_rate # penalize delay after TA (lose 1 reward per simulation second)
+        else :
+            if terminated :
+                reward -= 100 # getting to the goal before TA is bad
+        
+        obs = np.concatenate((obs,np.array([self.T,self.TA_passed]))) # create new obs
+
+        return (
+            obs,
+            reward,
+            terminated,
+            truncated,
+            info
+        )
     
     
+
+    def render(self):
+        # agent is represented as a cross, rest as a dot
+        if self.render_mode == "console":
+            print("." * self.agent_pos, end="")
+            print("x", end="")
+            print("." * (self.grid_size - self.agent_pos))
+
+        if self.render_mode == "rgb_array":
+    
+            # Unpack state
+            pos = self.agent_pos
+            vel = self.agent_vel
+            vel_mag = np.linalg.norm(self.agent_vel)
+        
+            # Create a figure and manually set the canvas
+            fig, ax = plt.subplots(figsize=(4, 4), dpi=100)
+            canvas = FigureCanvasAgg(fig)  # explicitly use Agg canvas
+            fig.set_canvas(canvas)
+        
+            ax.set_xlim(-self.arena_size, self.arena_size)
+            ax.set_ylim(-self.arena_size, self.arena_size)
+            ax.set_aspect('equal')
+            ax.axis("off")
+
+            ax.plot(pos[0], pos[1], 'ro', markersize=5)
+        
+            # Draw the agent as an arrow (if vel is nonzero)
+            if vel_mag > 1e-6:
+                ax.arrow(
+                    pos[0], pos[1],
+                    vel[0], vel[1],
+                    head_width=0.5,
+                    head_length=0.7,
+                    fc='blue',
+                    ec='blue',
+                    length_includes_head=True
+                )
+            
+            # Draw arena border
+            ax.plot([-self.arena_size, self.arena_size, self.arena_size, -self.arena_size, -self.arena_size],
+                    [-self.arena_size, -self.arena_size, self.arena_size, self.arena_size, -self.arena_size], 'k-', linewidth=1)
+            
+            
+            # If TA_passed signal is active, display label
+            ax.text(-9.5, 9.2, "T="+str(self.T), fontsize=12, color='green', weight='bold')
+            if self.TA_passed >= 0.5:
+                ax.text(-9.5, 10, "TA_Passed", fontsize=12, color='red', weight='bold')
+    
+            # Draw goal area border
+            ax.plot([-1, 1, 1, -1, -1],
+                    [-1, -1, 1, 1, -1], 'k-', linewidth=1)
+        
+            # Render to RGB array
+            canvas.draw()
+            buf = canvas.buffer_rgba()  # use RGBA buffer
+            width, height = fig.get_size_inches() * fig.dpi
+            image = np.frombuffer(buf, dtype=np.uint8).reshape(int(height), int(width), 4)[..., :3]  # strip alpha
+        
+            plt.close(fig)
+            return image
+
+
+
 if __name__=="__main__" :
-    env=InertialContinuousArenaTrigger()
-    ret = env.reset()
+    
+    gym.register('InertialContinuousArenaTrigger',InertialContinuousArenaTrigger)
+        
+    # uglyVideo(10,env)
+    
+    
+    # vec_env = make_vec_env(InertialContinuousArena, n_envs=1, env_kwargs=dict(arena_size=10))
+    
+    envTrig = InertialContinuousArenaTrigger()
+    
+    from stable_baselines3 import PPO
+    from util import record_video
+    
+    model = PPO("MlpPolicy", envTrig, verbose=1, device='cpu')
+    
+    record_video('InertialContinuousArenaTrigger', model,prefix='untrained')
+    
+    # Train the agent
+    model.learn(total_timesteps=10_000)
+    record_video('InertialContinuousArenaTrigger', model,prefix='10ksteps')
+    model.learn(total_timesteps=90_000)
+    record_video('InertialContinuousArenaTrigger', model,prefix='100ksteps')
