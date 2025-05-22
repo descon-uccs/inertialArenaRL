@@ -316,8 +316,6 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
             info
         )
     
-    
-
     def _annotate_plot(self,ax) :
         '''
         ax: pyplot axes object to add stuff to!
@@ -334,27 +332,108 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
 
 
 
+class InertialContinuousArenaThrust(InertialContinuousArenaTrigger) :
+    '''
+    Extends the InertialContinuousArenaTrigger by modifying the 
+    agent's thrust to be real-valued.
+    Almost everything is the same except the action space is now a Box().
+    '''
+    def __init__(self, arena_size=10, sample_rate=10, render_mode="rgb_array", TA=5, maxThrust=1):
+        '''
+        initializes a arena_size X arena_size square area
+        '''
+        super(InertialContinuousArenaThrust, self).__init__(arena_size,sample_rate,render_mode)
+        
+        
+        self.maxThrust = maxThrust
+        
+        # overwrite the self.action_space attribute:
+        lowAction = np.array([-maxThrust]*2)
+        highAction = np.array([maxThrust]*2)
+        self.action_space = spaces.Box(low=lowAction, high=highAction, shape=(2,), dtype=np.float64)
+        
+        
+
+    def reset(self, seed=None, options=None, state=None):
+        """
+        Important: the observation must be a numpy array
+        state: if None, initialize in lower-left. Otherwise, length-4 np array of initial agent state.
+        :return: (np.array)
+        """
+        obs,info = super().reset(seed=seed, options=options, state=state)
+        
+        return obs,info
+
+    def _reward(self,action,terminated,truncated) :
+        
+        # compute reward differently for trigger environment!
+        # positive reward if terminated after TA, negative reward if terminated before TA
+        reward = 0.
+        # reward -= np.linalg.norm(self.agent_pos)/10000 # slope the agent slightly toward the goal
+        if action != self.COAST :
+            reward -= 1 # thrust is always costly
+        if self.TA_passed : 
+            if terminated :
+                reward += 1000 # getting to the goal after TA is good
+            else:
+                reward -= 1/self.sample_rate # penalize delay after TA (lose 1 reward per simulation second)
+        else :
+            if terminated :
+                reward -= 50 # getting to the goal before TA is bad
+        return reward
+
+    def step(self, action):
+        
+        self.T += 1/self.sample_rate # propagate time
+        self.TA_passed = self.T >= self.TA-1e-6
+        
+        obs,reward,terminated,truncated,info = super().step(action) # super handles cumulative reward and calling the _reward method
+        
+        obs['TA_passed'] = self.TA_passed
+
+        return (
+            obs,
+            reward,
+            terminated,
+            truncated,
+            info
+        )
+    
+    def _annotate_plot(self,ax) :
+        '''
+        ax: pyplot axes object to add stuff to!
+        This method is called from the parent's render() method and can be used
+        to customize the display for the child's purposes.
+        '''
+        
+        # If TA_passed signal is active, display label
+        ax.text(-9.5, 11.4, "T="+str(np.round(self.T,1)), fontsize=12, color='green', weight='bold')
+        ax.text(-9.5, 10.2, "cum reward="+str(np.round(self.cum_reward,1)), fontsize=12, color='green', weight='bold')
+        if self.TA_passed :
+            ax.text(-9.5, 9, "TA Passed", fontsize=12, color='red', weight='bold')
+        return ax
+
 if __name__=="__main__" :
     
-    gym.register('InertialContinuousArenaTrigger',InertialContinuousArenaTrigger)
+    gym.register('InertialContinuousArenaTriggerThrust',InertialContinuousArenaThrust)
         
     # uglyVideo(10,env)
     
     
     # vec_env = make_vec_env(InertialContinuousArena, n_envs=1, env_kwargs=dict(arena_size=10))
     
-    envTrig = InertialContinuousArenaTrigger()
-    envTrig.reset()
+    envThr = InertialContinuousArenaThrust()
+    envThr.reset()
     
     from stable_baselines3 import PPO
     from util import record_video
     
-    model = PPO("MultiInputPolicy", envTrig, verbose=1, device='cpu')
+    model = PPO("MultiInputPolicy", envThr, verbose=1, device='cpu')
     
     # record_video('InertialContinuousArenaTrigger', model,prefix='untrained')
     
     # Train the agent
     # model.learn(total_timesteps=10_000)
     # record_video('InertialContinuousArenaTrigger', model,prefix='10ksteps')
-    model.learn(total_timesteps=2_000_000)
-    record_video('InertialContinuousArenaTrigger', model,prefix='2000ksteps')
+    # model.learn(total_timesteps=2_000_000)
+    # record_video('InertialContinuousArenaTrigger', model,prefix='2000ksteps')
