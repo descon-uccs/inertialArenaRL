@@ -11,6 +11,7 @@ from gymnasium import spaces
 import numpy as np
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 import matplotlib.pyplot as plt
+    
 
 class InertialContinuousArena(gym.Env):
     """
@@ -62,8 +63,14 @@ class InertialContinuousArena(gym.Env):
         n_actions = 5
         self.action_space = spaces.Discrete(n_actions)
         # The observation will be [x_pos, y_pos, x_vel, y_vel] of the agent
-        low = np.array([-arena_size, -arena_size, -np.inf, -np.inf])
-        high = np.array([arena_size, arena_size, np.inf, np.inf])
+        low = np.array([-arena_size,    # x_pos
+                        -arena_size,    # y_pos
+                        -np.inf,        # x_vel
+                        -np.inf])       # y_vel
+        high = np.array([arena_size,    # x_pos
+                         arena_size,    # y_pos
+                         np.inf,        # x_vel
+                         np.inf])       # y_vel
         self.observation_space = spaces.Box(
             low=low, high=high, shape=(4,), dtype=np.float64
         )
@@ -81,7 +88,7 @@ class InertialContinuousArena(gym.Env):
             
             state = self.observation_space.sample()
             self.agent_pos = state[:2]
-            self.agent_vel = state[2:]
+            self.agent_vel = state[2:4]
             
             
             # self.agent_pos = np.array([-self.arena_size*.9, -self.arena_size*.9])
@@ -89,7 +96,7 @@ class InertialContinuousArena(gym.Env):
             
         else :
             self.agent_pos = state[:2]
-            self.agent_vel = state[2:]
+            self.agent_vel = state[2:4]
         return np.concatenate((self.agent_pos,self.agent_vel)), {}  # empty info dict
 
     def step(self, action):
@@ -194,3 +201,61 @@ class InertialContinuousArena(gym.Env):
 
     def close(self):
         pass
+    
+    
+
+
+class InertialContinuousArenaTrigger(InertialContinuousArena) :
+    '''
+    Extends the vanilla InertialContinuousArena by adding a "trigger time"
+    This environment has 2 extra states: "T" and "TA"
+    T: current simulation time (in seconds). Init to 0 and increments by 1/self.sample_rate every step
+    TA: trigger time (in seconds): if agent enters target area when T<TA, penalty. If T>=TA, reward.
+    '''
+    def __init__(self, arena_size=10, sample_rate=10, render_mode="rgb_array", TA=5):
+        '''
+        initializes a arena_size X arena_size square area
+        '''
+        super(InertialContinuousArenaTrigger, self).__init__(arena_size,sample_rate,render_mode)
+        
+        self.TA = TA
+        
+        if TA>1e-6 : 
+            self.TA_passed = 0.
+        else :
+            self.TA_passed = 1.
+            
+        self.T = 0.
+        
+        # The observation will be [x_pos, y_pos, x_vel, y_vel, T, TA_passed]
+        low = np.concatenate((self.observation_space.low,
+                              np.array([0.,0.])))   #T, TA_passed
+        high = np.concatenate((self.observation_space.high,
+                               np.array([np.inf,1.])))   #T, TA_passed
+        self.observation_space = spaces.Box(
+            low=low, high=high, shape=(6,), dtype=np.float64
+        )
+
+    def reset(self, seed=None, options=None, state=None):
+        """
+        Important: the observation must be a numpy array
+        state: if None, initialize in lower-left. Otherwise, length-4 np array of initial agent state.
+        :return: (np.array)
+        """
+        obs,info = super().reset(seed=seed, options=options, state=state) # obs has no T, TA_passed
+        # return obs
+        
+        self.T = 0. # set clock to 0
+        
+        if self.TA>1e-6 : 
+            self.TA_passed = 0. 
+        else :
+            self.TA_passed = 1.
+        
+        # return obs, np.array((self.T,self.TA_passed))
+        return np.concatenate((obs,np.array([self.T,self.TA_passed]))), info  # empty info dict
+    
+    
+if __name__=="__main__" :
+    env=InertialContinuousArenaTrigger()
+    ret = env.reset()

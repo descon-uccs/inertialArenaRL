@@ -33,8 +33,8 @@ if __name__=="__main__" :
     # Train the agent
     model.learn(total_timesteps=10_000)
     record_video('InertialContinuousArena', model,prefix='10ksteps')
-    model.learn(total_timesteps=90_000)
-    record_video('InertialContinuousArena', model,prefix='100ksteps')
+    # model.learn(total_timesteps=90_000)
+    # record_video('InertialContinuousArena', model,prefix='100ksteps')
     
     
     # uglyVideo(10,10,env,model)
