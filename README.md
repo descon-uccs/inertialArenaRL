@@ -21,6 +21,7 @@ This will:
 
 There may be a slight difference between the untrained agent and the partially-trained agent, but the 100k-trained agent should be extremely effective.
 The following GIFs show the untrained agent and the agent trained for 100k timesteps.
+
 ![ezgif com-video-to-gif-converter](https://github.com/user-attachments/assets/7512642f-c76b-4059-970a-d3b0d35a43a6)
 
 ![100ksteps-step-0-to-step-500-ezgif com-video-to-gif-converter](https://github.com/user-attachments/assets/7d188268-2a63-4ee3-81e9-99cbffd90485)
