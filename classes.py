@@ -266,7 +266,9 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
 
     def step(self, action):
         
-        obs,_,terminated,truncated,info = super().step(action)
+        obs,rewardSuper,terminated,truncated,info = super().step(action)
+        
+        self.cum_reward -= rewardSuper
         
         # compute reward differently for trigger environment!
         # positive reward if terminated after TA, negative reward if terminated before TA
@@ -274,8 +276,8 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
         self.T += 1/self.sample_rate # propagate time
         self.TA_passed = self.T >= self.TA-1e-6
         
-        reward = 0
-        reward -= np.linalg.norm(self.agent_pos)/10000 # slope the agent slightly toward the goal
+        reward = 0.
+        # reward -= np.linalg.norm(self.agent_pos)/10000 # slope the agent slightly toward the goal
         if action != self.COAST :
             reward -= 1 # thrust is always costly
         if self.TA_passed>0.5 : 
@@ -285,7 +287,9 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
                 reward -= 1/self.sample_rate # penalize delay after TA (lose 1 reward per simulation second)
         else :
             if terminated :
-                reward -= 1000 # getting to the goal before TA is bad
+                reward -= 50 # getting to the goal before TA is bad
+        
+        self.cum_reward += reward
         
         obs = np.concatenate((obs,np.array([self.T,self.TA_passed]))) # create new obs
 
@@ -343,9 +347,10 @@ class InertialContinuousArenaTrigger(InertialContinuousArena) :
             
             
             # If TA_passed signal is active, display label
-            ax.text(-9.5, 10.2, "T="+str(np.round(self.T,1)), fontsize=12, color='green', weight='bold')
+            ax.text(-9.5, 11.4, "T="+str(np.round(self.T,1)), fontsize=12, color='green', weight='bold')
+            ax.text(-9.5, 10.2, "cum reward="+str(np.round(self.cum_reward,1)), fontsize=12, color='green', weight='bold')
             if self.TA_passed >= 0.5:
-                ax.text(-9.5, 9, "TA_Passed", fontsize=12, color='red', weight='bold')
+                ax.text(-9.5, 9, "TA Passed", fontsize=12, color='red', weight='bold')
     
             # Draw goal area border
             ax.plot([-1, 1, 1, -1, -1],
@@ -383,5 +388,5 @@ if __name__=="__main__" :
     # Train the agent
     # model.learn(total_timesteps=10_000)
     # record_video('InertialContinuousArenaTrigger', model,prefix='10ksteps')
-    # model.learn(total_timesteps=100_000)
-    # record_video('InertialContinuousArenaTrigger', model,prefix='100ksteps')
+    model.learn(total_timesteps=100_000)
+    record_video('InertialContinuousArenaTrigger', model,prefix='100ksteps')
