@@ -26,7 +26,7 @@ if __name__=="__main__" :
     
     env = InertialContinuousArena()
     
-    model = PPO("MlpPolicy", env, verbose=1, device='cpu')
+    model = PPO("MultiInputPolicy", env, verbose=1, device='cpu')
     
     record_video('InertialContinuousArena', model,prefix='untrained')
     
