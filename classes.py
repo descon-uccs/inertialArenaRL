@@ -443,6 +443,119 @@ class InertialContinuousArenaThrust(InertialContinuousArenaTrigger) :
         if self.TA_passed :
             ax.text(-9.5, 9, "TA Passed", fontsize=12, color='red', weight='bold')
         return ax
+    
+    
+    
+class InertialThrustBudget(InertialContinuousArenaThrust) :
+    '''
+    Extends the InertialContinuousArenaThrust by adding a total L1 thrust budget.
+    The simulation truncates 10 seconds after the fuel budget is exhausted.
+    '''
+    def __init__(self, arena_size=10, sample_rate=10, render_mode="rgb_array", TA=5, maxThrust=1, BR=10):
+        '''
+        initializes a arena_size X arena_size square area
+        '''
+        super(InertialContinuousArenaThrust, self).__init__(arena_size,sample_rate,render_mode)
+        
+        
+        self.BR = BR
+        lowBudget = np.array([0])
+        highBudget = np.arrya([BR])
+        self.observation_space['fuel_remaining'] = spaces.Box(lowBudget,
+                                                              highBudget,
+                                                              (1,),
+                                                              dtype=np.float64)
+        
+
+    def reset(self, seed=None, options=None, state=None):
+        """
+        Important: the observation must be a numpy array
+        state: if None, initialize in lower-left. Otherwise, length-4 np array of initial agent state.
+        :return: (np.array)
+        """
+        obs,info = super().reset(seed=seed, options=options, state=state)
+        
+        return obs,info
+
+    def _reward(self,action,terminated,truncated) :
+        
+        # compute reward differently for trigger environment!
+        # positive reward if terminated after TA, negative reward if terminated before TA
+        reward = 0.
+        # reward -= np.linalg.norm(self.agent_pos)/10000 # slope the agent slightly toward the goal
+        
+        # the L1-norm of the impulse is a cost: (assume independent x and y thrusters I guess?)
+        reward -= np.linalg.norm(action,ord=1)
+        if self.TA_passed : 
+            if terminated :
+                reward += 1000 # getting to the goal after TA is good
+            else:
+                reward -= 1/self.sample_rate # penalize delay after TA (lose 1 reward per simulation second)
+        else :
+            if terminated :
+                reward -= 50 # getting to the goal before TA is bad
+        return reward
+
+
+    def step(self, action):
+        if not self.action_space.contains(action):
+            raise ValueError(
+                f"Received invalid action={action} which is not part of the action space"
+            )
+        
+        
+        self.T += 1/self.sample_rate # propagate time
+        self.TA_passed = self.T >= self.TA-1e-6
+        
+        self.agent_pos += self.agent_vel/self.sample_rate # propagate the position at the given sampling rate (before impulse)
+        self.agent_vel += action # add the action directly as an impulse
+
+        # Account for the boundaries of the grid: 0 agent's velocity in the component where it hit the wall?
+        for dim in range(2) :
+            if self.agent_pos[dim] > self.arena_size :
+                self.agent_pos[dim] = self.arena_size
+                self.agent_vel[dim] = 0 # if we hit the x (y) boundary, zero-out the x (y) velocity
+            elif self.agent_pos[dim] < -self.arena_size :
+                self.agent_pos[dim] = -self.arena_size
+                self.agent_vel[dim] = 0 # if we hit the x (y) boundary, zero-out the x (y) velocity
+                
+        # self.agent_pos = np.clip(self.agent_pos, [-self.arena_size,-self.arena_size], [self.arena_size,self.arena_size])
+
+        # Are we at the center of the grid?
+        terminated = self.GOAL.contains(self.agent_pos)
+        truncated = False  # we do not limit the number of steps here
+
+        reward = self._reward(action,terminated,truncated)
+
+        # Optionally we can pass additional info, we are not using that for now
+        info = {}
+        
+        self.cum_reward += reward
+        
+        obs = {'agent_state': np.concatenate((self.agent_pos,self.agent_vel))}
+        obs['TA_passed'] = self.TA_passed
+
+        return (
+            obs,
+            reward,
+            terminated,
+            truncated,
+            info,
+        )
+    
+    def _annotate_plot(self,ax) :
+        '''
+        ax: pyplot axes object to add stuff to!
+        This method is called from the parent's render() method and can be used
+        to customize the display for the child's purposes.
+        '''
+        
+        # If TA_passed signal is active, display label
+        ax.text(-9.5, 11.4, "T="+str(np.round(self.T,1)), fontsize=12, color='green', weight='bold')
+        ax.text(-9.5, 10.2, "cum reward="+str(np.round(self.cum_reward,1)), fontsize=12, color='green', weight='bold')
+        if self.TA_passed :
+            ax.text(-9.5, 9, "TA Passed", fontsize=12, color='red', weight='bold')
+        return ax
 
 if __name__=="__main__" :
     
