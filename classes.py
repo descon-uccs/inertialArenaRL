@@ -455,16 +455,17 @@ class InertialThrustBudget(InertialContinuousArenaThrust) :
         '''
         initializes a arena_size X arena_size square area
         '''
-        super(InertialContinuousArenaThrust, self).__init__(arena_size,sample_rate,render_mode)
+        super(InertialThrustBudget, self).__init__(arena_size,sample_rate,render_mode,TA=TA,maxThrust=maxThrust)
         
         
         self.BR = BR
         lowBudget = np.array([0])
-        highBudget = np.arrya([BR])
+        highBudget = np.array([BR])
         self.observation_space['fuel_remaining'] = spaces.Box(lowBudget,
                                                               highBudget,
                                                               (1,),
                                                               dtype=np.float64)
+        self.fuel_remaining = BR
         
 
     def reset(self, seed=None, options=None, state=None):
