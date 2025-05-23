@@ -563,25 +563,25 @@ class InertialThrustBudget(InertialContinuousArenaThrust) :
 
 if __name__=="__main__" :
     
-    gym.register('InertialContinuousArenaThrust',InertialContinuousArenaThrust)
+    # gym.register('InertialContinuousArenaThrust',InertialContinuousArenaThrust)
         
     # uglyVideo(10,env)
     
     
     # vec_env = make_vec_env(InertialContinuousArena, n_envs=1, env_kwargs=dict(arena_size=10))
     
-    envThr = InertialContinuousArenaThrust()
-    envThr.reset()
+    enBud = InertialThrustBudget()
+    enBud.reset()
     
-    from stable_baselines3 import PPO
-    from util import record_video
+    # from stable_baselines3 import PPO
+    # from util import record_video
     
-    model = PPO("MultiInputPolicy", envThr, verbose=1, device='cpu')
+    # model = PPO("MultiInputPolicy", envThr, verbose=1, device='cpu')
     
-    record_video('InertialContinuousArenaThrust', model,prefix='Thrust_untrained')
+    # record_video('InertialContinuousArenaThrust', model,prefix='Thrust_untrained')
     
-    # Train the agent
-    model.learn(total_timesteps=10_000)
-    record_video('InertialContinuousArenaThrust', model,prefix='Thrust_10ksteps')
-    model.learn(total_timesteps=100_000)
-    record_video('InertialContinuousArenaThrust', model,prefix='Thrust_100ksteps')
+    # # Train the agent
+    # model.learn(total_timesteps=10_000)
+    # record_video('InertialContinuousArenaThrust', model,prefix='Thrust_10ksteps')
+    # model.learn(total_timesteps=100_000)
+    # record_video('InertialContinuousArenaThrust', model,prefix='Thrust_100ksteps')
