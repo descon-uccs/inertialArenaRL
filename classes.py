@@ -451,7 +451,7 @@ class InertialThrustBudget(InertialContinuousArenaThrust) :
     Extends the InertialContinuousArenaThrust by adding a total L1 thrust budget.
     The simulation truncates 10 seconds after the fuel budget is exhausted.
     '''
-    def __init__(self, arena_size=10, sample_rate=10, render_mode="rgb_array", TA=5, maxThrust=1, BR=10):
+    def __init__(self, arena_size=10, sample_rate=10, render_mode="rgb_array", TA=5, maxThrust=1, BR=10.):
         '''
         initializes a arena_size X arena_size square area
         '''
@@ -476,8 +476,15 @@ class InertialThrustBudget(InertialContinuousArenaThrust) :
         """
         
         self.fuel_remaining = self.BR
+        if self.fuel_remaining > 1e-10 :
+            self.out_of_fuel = False
+        else :
+            self.out_of_fuel = True
+        self.timeout_timer = 2.
         obs,info = super().reset(seed=seed, options=options, state=state)
-        obs['fuel_remaining'] = self.fuel_remaining
+        obs['fuel_remaining'] = np.array([self.fuel_remaining])
+        self.TA_passed = np.random.randint(0,2)
+        obs['TA_passed'] = bool(self.TA_passed)
         
         return obs,info
 
@@ -488,20 +495,24 @@ class InertialThrustBudget(InertialContinuousArenaThrust) :
         reward = 0.
         # reward -= np.linalg.norm(self.agent_pos)/10000 # slope the agent slightly toward the goal
         
-        # the L1-norm of the impulse is a cost: (assume independent x and y thrusters I guess?)
-        reward -= np.linalg.norm(action,ord=1)
+        # fuel usage is constrained, so does not need to be explicitly costly.
+        # however, let's penalize timing out because fuel is gone
         if self.TA_passed : 
             if terminated :
-                reward += 1000 # getting to the goal after TA is good
+                reward += 100 # getting to the goal after TA is good
             else:
                 reward -= 1/self.sample_rate # penalize delay after TA (lose 1 reward per simulation second)
         else :
+            reward -= np.linalg.norm(self.agent_vel)/10 # penalize velocity before TA
             if terminated :
-                reward -= 50 # getting to the goal before TA is bad
+                reward -= 100 # getting to the goal before TA is bad
+        if truncated :
+            reward -= 50 # running out of fuel is bad I guess?
         return reward
 
 
     def step(self, action):
+        # to inherit the super step, we need to significantly modularize propagation!
         if not self.action_space.contains(action):
             raise ValueError(
                 f"Received invalid action={action} which is not part of the action space"
@@ -509,10 +520,30 @@ class InertialThrustBudget(InertialContinuousArenaThrust) :
         
         
         self.T += 1/self.sample_rate # propagate time
-        self.TA_passed = self.T >= self.TA-1e-6
+        
+        # if fuel is gone, the timeout_timer ticks:
+        if self.out_of_fuel :
+            self.timeout_timer -= 1/self.sample_rate
+        # if self.T >= self.TA-1e-6 :
+        #     self.TA_passed = True
+        
+        # compute budget-constrained action:
+        attempted_expended_fuel = np.linalg.norm(action,ord=1) # fuel cost is L1-norm
+        
+        if not self.out_of_fuel :
+            if attempted_expended_fuel > self.fuel_remaining :
+                # if action exceeds fuel budget, apply it proportionally
+                applied_action = action * self.fuel_remaining / attempted_expended_fuel
+                self.out_of_fuel = True
+            else :
+                applied_action = action
+        else :
+            applied_action = np.zeros(2)
+        self.fuel_remaining = max(self.fuel_remaining-attempted_expended_fuel, 0.)
+            
         
         self.agent_pos += self.agent_vel/self.sample_rate # propagate the position at the given sampling rate (before impulse)
-        self.agent_vel += action # add the action directly as an impulse
+        self.agent_vel += applied_action # add the action directly as an impulse
 
         # Account for the boundaries of the grid: 0 agent's velocity in the component where it hit the wall?
         for dim in range(2) :
@@ -523,13 +554,11 @@ class InertialThrustBudget(InertialContinuousArenaThrust) :
                 self.agent_pos[dim] = -self.arena_size
                 self.agent_vel[dim] = 0 # if we hit the x (y) boundary, zero-out the x (y) velocity
                 
-        # self.agent_pos = np.clip(self.agent_pos, [-self.arena_size,-self.arena_size], [self.arena_size,self.arena_size])
-
         # Are we at the center of the grid?
         terminated = self.GOAL.contains(self.agent_pos)
-        truncated = False  # we do not limit the number of steps here
+        truncated = self.timeout_timer < 0 # kill simulation if fuel's been gone for a while
 
-        reward = self._reward(action,terminated,truncated)
+        reward = self._reward(applied_action,terminated,truncated)
 
         # Optionally we can pass additional info, we are not using that for now
         info = {}
@@ -538,6 +567,7 @@ class InertialThrustBudget(InertialContinuousArenaThrust) :
         
         obs = {'agent_state': np.concatenate((self.agent_pos,self.agent_vel))}
         obs['TA_passed'] = self.TA_passed
+        obs['fuel_remaining'] = np.array([self.fuel_remaining])
 
         return (
             obs,
@@ -554,16 +584,30 @@ class InertialThrustBudget(InertialContinuousArenaThrust) :
         to customize the display for the child's purposes.
         '''
         
-        # If TA_passed signal is active, display label
-        ax.text(-9.5, 11.4, "T="+str(np.round(self.T,1)), fontsize=12, color='green', weight='bold')
-        ax.text(-9.5, 10.2, "cum reward="+str(np.round(self.cum_reward,1)), fontsize=12, color='green', weight='bold')
-        if self.TA_passed :
-            ax.text(-9.5, 9, "TA Passed", fontsize=12, color='red', weight='bold')
+        ax = super()._annotate_plot(ax)
+        
+        # Draw fuel status bar in upper right
+        fuel = max(0, min(self.fuel_remaining, self.BR))  # Clamp to [0, self.BR]
+        fuel_frac = fuel / self.BR
+        bar_left = 5.5
+        bar_bottom = 8.5
+        bar_width = 4
+        bar_height = 0.5
+        # Outline
+        ax.add_patch(plt.Rectangle((bar_left, bar_bottom), bar_width, bar_height,
+                                   edgecolor='black', facecolor='none', linewidth=1))
+        # Fill
+        ax.add_patch(plt.Rectangle((bar_left, bar_bottom), bar_width * fuel_frac, bar_height,
+                                   facecolor='orange'))
+        # Label
+        ax.text(bar_left + bar_width / 2, bar_bottom + bar_height + 0.2,
+                f"Fuel: {fuel:.1f}/10", fontsize=10, color='black', ha='center')
+        
         return ax
 
 if __name__=="__main__" :
     
-    # gym.register('InertialContinuousArenaThrust',InertialContinuousArenaThrust)
+    gym.register('InertialThrustBudget',InertialThrustBudget)
         
     # uglyVideo(10,env)
     
@@ -573,15 +617,42 @@ if __name__=="__main__" :
     enBud = InertialThrustBudget()
     enBud.reset()
     
-    # from stable_baselines3 import PPO
-    # from util import record_video
+    from stable_baselines3 import PPO
+    from util import record_video
     
-    # model = PPO("MultiInputPolicy", envThr, verbose=1, device='cpu')
+    model = PPO("MultiInputPolicy", enBud, verbose=1, device='cpu')
     
-    # record_video('InertialContinuousArenaThrust', model,prefix='Thrust_untrained')
+    record_video('InertialThrustBudget', model,prefix='fixedTA_untrained')
     
-    # # Train the agent
-    # model.learn(total_timesteps=10_000)
-    # record_video('InertialContinuousArenaThrust', model,prefix='Thrust_10ksteps')
-    # model.learn(total_timesteps=100_000)
-    # record_video('InertialContinuousArenaThrust', model,prefix='Thrust_100ksteps')
+    # # # Train the agent
+    # # model.learn(total_timesteps=10_000)
+    # # record_video('InertialContinuousArenaThrust', model,prefix='Thrust_10ksteps')
+    model.learn(total_timesteps=100_000)
+    record_video('InertialThrustBudget', model,prefix='fixedTA_100ksteps')
+    model.learn(total_timesteps=900_000)
+    record_video('InertialThrustBudget', model,prefix='fixedTA_1Msteps')
+    model.learn(total_timesteps=1_000_000)
+    record_video('InertialThrustBudget', model,prefix='fixedTA_2Msteps')
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
