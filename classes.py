@@ -474,7 +474,10 @@ class InertialThrustBudget(InertialContinuousArenaThrust) :
         state: if None, initialize in lower-left. Otherwise, length-4 np array of initial agent state.
         :return: (np.array)
         """
+        
+        self.fuel_remaining = self.BR
         obs,info = super().reset(seed=seed, options=options, state=state)
+        obs['fuel_remaining'] = self.fuel_remaining
         
         return obs,info
 
